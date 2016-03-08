@@ -7,5 +7,7 @@
 #include "flag_sampling.h"
 #include "flag_spherlaguerre.h"
 #include "flag_spherbessel.h"
+#include "flag_fourierbessel.h"
+#include "smk_shbessel.h"
 
 #endif
