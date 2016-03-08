@@ -3,10 +3,7 @@
 
 #include <complex.h>
 
-void flag_fourierbessel_mw_inverse(complex double *f,
-		const complex double *flmn,
-		const double *nodes, int Nnodes,
-		int L, double tau, int N, int spin);
+void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn, const double *rnodes, const double *knodes, const int L, const int spin, const int Nrnodes, const int Nknodes);
 
 void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const complex double *fn, const double *nodes, int Nnodes, double tau, int K, int mapsize);
 
