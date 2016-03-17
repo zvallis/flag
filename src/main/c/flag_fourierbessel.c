@@ -1,5 +1,9 @@
 //Changes by Zoe Vallis, based on code by Boris Leistedt and Jason McEwen
 
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define PI    3.141592653589793238462643383279502884197
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -12,13 +16,17 @@
 #include <fftw3.h>
 //#include <assert.h>
 
+#include "so3.h"
 #include "ssht_types.h"
 #include "ssht_error.h"
 #include "ssht_dl.h"
 #include "ssht_sampling.h"
 #include "ssht_core.h"
+#include "s2let_types.h"
 #include "smk_shbessel.h"
 #include "flag_core.h"
+#include "flag_types.h"
+#include "flaglet.h"
 
 /*void test(const double *arr, const int *L, const int *spin, const int *Nrnodes, const int *Nknodes)
 {
@@ -28,7 +36,7 @@
 }*/
 
 // Based on flag_core_synthesis, computes f from a given flmn
-void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn, const double *rnodes, const double *knodes, const int L, const int spin, const int Nrnodes, const int Nknodes)
+void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn, const double *rnodes, const int Nrnodes, const double *knodes, const int Nknodes, const int L, const int spin, complex double *Flmr)
 {
     //assert(L > 0);
 	//assert(N > 1);
@@ -42,24 +50,21 @@ void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn
 	int frsize = ssht_fr_size_mw(L);
 	ssht_dl_method_t dl_method = SSHT_DL_TRAPANI;
 
-	complex double *Flmr;
-	flag_core_allocate_flmn(&Flmr, L, Nrnodes);
+	//complex double *Flmr;
+	//flag_core_allocate_flmn(&Flmr, L, Nrnodes);
 	printf("> Mapped spherical Laguerre transform...");fflush(NULL);
     //Using variation that integrates over k, as opposed to Fourier-Laguerre which sums over p
     flag_fourierbessel_spherbessel_mapped_synthesis(Flmr, flmn, rnodes, Nrnodes, knodes, Nknodes, flmsize);
 	printf("done\n");
-    printf("FLAG_FB outside loop L = %i\n",L);
 
 	for (n = 0; n < Nrnodes; n++){
-        printf("FLAG_FB inside loop L = %i\n",L);
 		printf("> Synthesis: layer %i on %i\n",n+1,Nrnodes);
 		offset_lm = n * flmsize;
 		offset_r = n * frsize;
 		ssht_core_mw_inverse_sov_sym(f + offset_r, Flmr + offset_lm, L, spin, dl_method, verbosity);
 	}
 
-    free(Flmr);
-
+    //free(Flmr);
 }
 
 // Based on flag_spherlaguerre_mapped_synthesis, changed to integrate over k with additional Bessel function, rather than summing over p
@@ -68,8 +73,8 @@ void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const co
 	//assert(Nrnodes > 1);
     //assert(Nknodes > 1);
 	//assert(mapsize > 1);
-    int i, l, x, offset_n, offset_i;
-    double r, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s, S = 30; // S is the number of strips to divide the integration into;
+    int i, l, offset_n, offset_i;
+    double r, x, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s, S = 30; // S is the number of strips to divide the integration into;
     double s_width = ((k_max-k_min)/S)/6.0;
 	double *bessel_integral = (double*)calloc(Nknodes, sizeof(double));
 
@@ -83,24 +88,32 @@ void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const co
             offset_n = k_ind * mapsize;
                 for(l=0; l<mapsize; l++)
                 {
+                    //simplifying to sum for testing
+                    bessel_integral[k_ind] += k*k * sjl(l,k*r) * fn[l+offset_n];
+                    /*
                     // Weddle's rule for integration
                     for (s=1; s<=S; s++)
                     {
-                        int c = 0;
+                        int j = 0;
                         double h = s_width/6.0, y[7] = { 0 };
                         for (x=k; x<=k+s_width; x+=h)
                         {
-                            y[c] = pow(x,2) * sjl(l,k*r) * fn[l+offset_n];
-                            c += 1;
+                            y[j] = x*x * sjl(l,x*r) * fn[l+offset_n];
+                            j += 1;
                         }
-                        *bessel_integral += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
-                    }
+                        bessel_integral[k_ind] += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
+                    }*/
                 }
 		}
         offset_i = i * mapsize;
         for(l=0; l<mapsize; l++)
 			{
-                f[l+offset_i] = *bessel_integral;
+                for (k=k_min; k<k_max; k+=k_interval)
+        		{
+                    int k_ind = flag_k2kind(k,knodes,k_interval);
+                    //f[l+offset_i] = fn[l+offset_i];
+                    f[l+offset_i] = bessel_integral[k_ind];
+                }
             }
     }
 
@@ -120,6 +133,155 @@ double flag_kind2k(int k_ind, double *knodes, double k_interval){
     double kmin = knodes[0];
     double k = (double)(kmin + k_ind*k_interval);
     return k;
+}
+
+void fill_flaglet_parameters(flaglet_parameters_t *flaglet_parameters, const flagfb_parameters_t *parameters){
+    flaglet_parameters->B_l = parameters->B_l;
+    flaglet_parameters->B_p = parameters->B_k;
+    flaglet_parameters->L = parameters->L;
+    flaglet_parameters->J_min_l = parameters->J_min_l;
+    flaglet_parameters->N = parameters->N;
+    flaglet_parameters->P = parameters->K;
+    flaglet_parameters->spin = parameters->spin;
+    flaglet_parameters->upsample = parameters->upsample;
+    flaglet_parameters->reality = parameters->reality;
+}
+
+int flag_radial_bandlimit(int jk, const flagfb_parameters_t *parameters){
+	return ceil(pow(parameters->B_k, jk+1));
+}
+
+int flag_angular_bandlimit(int jl, const flagfb_parameters_t *parameters){
+    s2let_parameters_t s2let_parameters = {};
+	fill_s2let_angular_parameters(&s2let_parameters, parameters);
+	return s2let_bandlimit(jl, &s2let_parameters);
+}
+
+flagfb_wavscal_t flagfb_allocate_f_wav_scal(const flagfb_parameters_t *parameters)
+{
+    flaglet_parameters_t flaglet_parameters = {};
+    fill_flaglet_parameters(&flaglet_parameters,&parameters);
+
+    complex double *f_wav, *f_scal;
+    flagfb_wavscal_t f_wavscal;
+    flaglet_allocate_f_wav(&f_wav, &f_scal, &flaglet_parameters);
+    f_wavscal.scal = f_scal;
+    f_wavscal.wav = f_wav;
+    return f_wavscal;
+}
+/*
+int flag_n_scal(const flagfb_parameters_t *parameters)
+{
+    int J_min = parameters->J_min_l;
+    int L = parameters->L;
+    int bandlimit = (parameters->upsample)
+                    ? parameters->L
+                    : MIN(s2let_bandlimit(J_min-1, parameters), L);
+
+    s2let_parameters_t bl_parameters = {};
+    bl_parameters.L = bandlimit;
+
+    return s2let_n_phi(&bl_parameters) * s2let_n_theta(&bl_parameters);
+}
+
+int flag_n_wav(const flagfb_parameters_t *parameters)
+{
+    so3_parameters_t so3_parameters = {};
+    fill_so3_parameters(&so3_parameters, parameters);
+
+    s2let_parameters_t s2let_parameters = {};
+    s2let_parameters.B = parameters->
+
+    int L = parameters->L;
+    int J_min = parameters->J_min_l;
+    int J = s2let_j_max(parameters);
+    int bandlimit = L;
+    int j, total = 0;
+    printf("upsample %d J_min %i J %i \n",parameters->upsample,J_min,J);
+    for (j = J_min; j <= J; ++j)
+    {
+        printf('upsample %i\n',parameters->upsample);
+        if (!parameters->upsample)
+        {
+            bandlimit = MIN(s2let_bandlimit(j, parameters), L);
+            so3_parameters.L = bandlimit;
+            printf("L %i bandlimit %i so3 L %i",L,s2let_bandlimit(j, parameters),so3_parameters.L);
+        }
+        total += so3_sampling_f_size(&so3_parameters);
+    }
+    printf("total %i\n",total);
+    return total;
+}*/
+
+void flag_fbwavelet_analysis_lmnk(complex double *f_wav, complex double *f_scal, const complex double *flmk, const flagfb_parameters_t *parameters)
+{
+	int offset, jl, jk, l, m, n, k, lmn_size, lm_ind, ln_ind, indlmn, indjjlnk, indlmk;
+	complex double psi;
+	int L = parameters->L;
+	int N = parameters->N;
+	int K = parameters->K;
+	int J_l = flaglet_j_max(L, parameters->B_l);
+	int J_k = flaglet_j_max(K, parameters->B_k);
+	so3_parameters_t so3_parameters = {};
+	fill_so3_angular_parameters(&so3_parameters, parameters);
+	int bandlimit_k = K;
+	int bandlimit_l = L;
+	int Nj = N;
+    double *knodes = parameters->knodes;
+    double k_interval = parameters->k_interval;
+    int Nknodes = flag_k2kind(K,&knodes,k_interval);
+
+    // Define wav_lmk and scal_lmk from data, using flaglet code for now
+    complex double *wav_lmk;
+    double *scal_lmk;
+    flaglet_parameters_t flaglet_parameters = {};
+    fill_flaglet_parameters(&flaglet_parameters,&parameters);
+    flaglet_allocate_wav_lmp(&wav_lmk, &scal_lmk, &flaglet_parameters);
+    //flaglet_wav_lmp(&wav_lmk, &scal_lmk, &flaglet_parameters); //for real space analysis
+
+    // Calculates wavelets
+	offset = 0;
+	for (jk = parameters->J_min_k; jk <= J_k; jk++){
+        if (!parameters->upsample)
+        	bandlimit_k = MIN(flag_radial_bandlimit(jk, parameters), K);
+		for (jl = parameters->J_min_l; jl <= J_l; jl++){
+        	if (!parameters->upsample)
+        	{
+            	bandlimit_l = MIN(flag_angular_bandlimit(jl, parameters), L);
+            	so3_parameters.L = bandlimit_l;
+            	Nj = MIN(N,bandlimit_l);
+            	Nj += (Nj+N)%2;
+            	so3_parameters.N = Nj;
+        	}
+			lmn_size = so3_sampling_flmn_size(&so3_parameters);
+			for (k = 0; k < bandlimit_k; k++){
+	       		for (n = -Nj+1; n < Nj; n+=2){
+					for (l = MAX(ABS(parameters->spin), ABS(n)); l < bandlimit_l; l++){
+		       			ssht_sampling_elm2ind(&ln_ind, l, n);
+		       			indjjlnk = jl * (J_l + 1) * L * L * Nknodes   +  jl * L * L * Nknodes + k * L * L + ln_ind;
+						psi = 8*PI*PI/(2*l+1) * conj(wav_lmk[indjjlnk]);
+						for (m = -l; m <= l ; m++){
+	       					ssht_sampling_elm2ind(&lm_ind, l, m);
+							indlmk = k * L * L + lm_ind;
+							so3_sampling_elmn2ind(&indlmn, l, m, n, &so3_parameters);
+							f_wav[offset + k * lmn_size + indlmn] = flmk[indlmk] * psi ;
+						}
+					}
+				}
+			}
+			offset += lmn_size * bandlimit_k;
+		}
+	}
+    // Calculates scaling function
+	for (k = 0; k < Nknodes; k++){
+		for (l = ABS(parameters->spin); l < L; l++){
+			for (m = -l; m <= l ; m++){
+				ssht_sampling_elm2ind(&lm_ind, l, m);
+				indlmk = k * L * L  +  lm_ind;
+				f_scal[indlmk] = flmk[indlmk] * sqrt((4.0*PI)/(2.0*l+1.0)) * scal_lmk[k*L+l] ;
+			}
+		}
+	}
 }
 
 /* ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
