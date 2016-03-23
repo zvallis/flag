@@ -112,63 +112,58 @@ void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const co
 	//assert(mapsize > 1);
     int kmapsize = ssht_flm_size(L);
 	int rmapsize = ssht_fr_size_mw(L);
-    int i, l, k_ind, offset_n, offset_i;
-    double r, x, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s, S = 30; // S is the number of strips to divide the integration into;
-    double s_width = ((k_max-k_min)/(S-1))/6.0;
+    int i, l, k_ind, offset_n, offset_i, s, S=30;
+    double r, x, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s_width = (k_max-k_min)/(S-1), h = s_width/6.0; // S is the number of strips to divide the integration into;
 	double *bessel_integral = (double*)calloc(Nrnodes*L, sizeof(double));
 
         // Integrate over k
-        for (i = 0; i < Nrnodes; i++)
-        {for(l=0; l<L; l++)
+    for (i = 0; i < Nrnodes; i++)
+    {
+        for(l=0; l<=L; l++) //l=0 not used, for flat plane
         {
-
-                //double bessel_integral = 0;
                 r = rnodes[i];
                 offset_i = i * rmapsize;
-
                 bessel_integral[i,l]=0.;
-
+            //NEED TO ENSURE SUM RULE AND WEDDLE RULE MATCH
             for (k_ind=0; k_ind<Nknodes; k_ind++)
     		{
-                k = k_min+(k_ind-1.)*k_interval;
-                //flag_kind2k(k_ind,&knodes,k_interval);
-                offset_n = k_ind * kmapsize;
+                //k = k_min+(k_ind-1.)*k_interval;
+                //double k = flag_kind2k(k_ind-1.,&knodes,k_interval);
+                //offset_n = k_ind * kmapsize;
                 //simplifying to sum for testing
+                //bessel_integral[i,l] = 1.*k_interval;
                 //bessel_integral[i,l] += k*k * sjl(l,k*r) * fn[l+offset_n] * k_interval;
-                //bessel_integral[i,l] +=  1. ;//* k_interval;
-                //bessel_integral[i,l] += k*k*r*r*k_interval;
-                printf("i %i k %f k_ind %i l %i integral %f \n",i,k,k_ind,l,bessel_integral[i,l]);
 
                 // Weddle's rule for integration
-                for (s=1; s<=S; s++)
+                for (s=0; s<=S; s++)
                 {
                     int j = 0;
-                    double h = s_width/6.0, y[7] = { 0 };
+                    double y[7] = { 0 };
+                    k = k_min + s*s_width;
                     for (x=k; x<=k+s_width; x+=h)
                     {
                         y[j] = x*x * sjl(l,x*r) * fn[l+offset_n];
+                        //y[j] = 1.0;
                         j += 1;
                     }
                     bessel_integral[i,l] += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
+                    //k += s_width;
+                    printf("s %i k %f\n",s,k);
                 }
+                printf("i %i k %f k_ind %i l %i integral %f \n",i,k,k_ind,l,bessel_integral[i,l]);
 		    }
-        //}
-    }
-    //for (i = 0; i < Nrnodes; i++){
+        }
         for(l=0; l<=L; l++)
         {
-            //int k = flag_kind2k(k_ind,knodes,k_interval);
-            //int offset_k = k_ind * kmapsize;
             //f[l+offset_i] = fn[l+offset_i];
             //f[l+offset_i] = bessel_integral[k_ind,l];
             //f[l+offset_i] = bessel_integral[i,l];
             //remember to swap i and l back to other way before tidying up, is format needed for next step
             f[i+l*Nrnodes] = bessel_integral[i,l];
         }
-        //}
     }
 
-	//free(bessel_integral);
+	free(bessel_integral);
 }
 
 flagfb_wavscal_t flagfb_allocate_f_wav_scal(const flagfb_parameters_t *parameters)
