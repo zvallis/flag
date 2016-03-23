@@ -134,12 +134,12 @@ void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const co
                 //flag_kind2k(k_ind,&knodes,k_interval);
                 offset_n = k_ind * kmapsize;
                 //simplifying to sum for testing
-                bessel_integral[i,l] += k*k * sjl(l,k*r) * fn[l+offset_n] * k_interval;
+                //bessel_integral[i,l] += k*k * sjl(l,k*r) * fn[l+offset_n] * k_interval;
                 //bessel_integral[i,l] +=  1. ;//* k_interval;
                 //bessel_integral[i,l] += k*k*r*r*k_interval;
                 printf("i %i k %f k_ind %i l %i integral %f \n",i,k,k_ind,l,bessel_integral[i,l]);
 
-                /*// Weddle's rule for integration
+                // Weddle's rule for integration
                 for (s=1; s<=S; s++)
                 {
                     int j = 0;
@@ -150,7 +150,7 @@ void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const co
                         j += 1;
                     }
                     bessel_integral[i,l] += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
-                }*/
+                }
 		    }
         //}
     }
