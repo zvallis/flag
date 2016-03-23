@@ -35,91 +35,6 @@
     return 0;
 }*/
 
-// Based on flag_core_synthesis, computes f from a given flmn
-void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn, const double *rnodes, const int Nrnodes, const double *knodes, const int Nknodes, const int L, const int spin, complex double *Flmr)
-{
-    //assert(L > 0);
-	//assert(N > 1);
-	//assert(nodes != NULL);
-	//const int alpha = ALPHA;
-
-    printf("FLAG_FB start: Nrnodes %i, Nknodes %i, L %i, spin %i\n",Nrnodes,Nknodes,L,spin);
-	int verbosity = 1; // Level of how much detail to print about ongoing process
-	int n, offset_lm, offset_r;
-	int flmsize = ssht_flm_size(L);
-	int frsize = ssht_fr_size_mw(L);
-	ssht_dl_method_t dl_method = SSHT_DL_TRAPANI;
-
-	//complex double *Flmr;
-	//flag_core_allocate_flmn(&Flmr, L, Nrnodes);
-	printf("> Mapped spherical Laguerre transform...");fflush(NULL);
-    //Using variation that integrates over k, as opposed to Fourier-Laguerre which sums over p
-    flag_fourierbessel_spherbessel_mapped_synthesis(Flmr, flmn, rnodes, Nrnodes, knodes, Nknodes, flmsize);
-	printf("done\n");
-
-	for (n = 0; n < Nrnodes; n++){
-		printf("> Synthesis: layer %i on %i\n",n+1,Nrnodes);
-		offset_lm = n * flmsize;
-		offset_r = n * frsize;
-		ssht_core_mw_inverse_sov_sym(f + offset_r, Flmr + offset_lm, L, spin, dl_method, verbosity);
-	}
-
-    //free(Flmr);
-}
-
-// Based on flag_spherlaguerre_mapped_synthesis, changed to integrate over k with additional Bessel function, rather than summing over p
-void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const complex double *fn, const double *rnodes, int Nrnodes, const double *knodes, int Nknodes, int mapsize)
-{
-	//assert(Nrnodes > 1);
-    //assert(Nknodes > 1);
-	//assert(mapsize > 1);
-    int i, l, offset_n, offset_i;
-    double r, x, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s, S = 30; // S is the number of strips to divide the integration into;
-    double s_width = ((k_max-k_min)/S)/6.0;
-	double *bessel_integral = (double*)calloc(Nknodes, sizeof(double));
-
-	for (i = 0; i < Nrnodes; i++)
-	{
-		r = rnodes[i];
-        // Integrate over k
-		for (k=k_min; k<k_max; k+=k_interval)
-		{
-            int k_ind = flag_k2kind(k,knodes,k_interval);
-            offset_n = k_ind * mapsize;
-                for(l=0; l<mapsize; l++)
-                {
-                    //simplifying to sum for testing
-                    bessel_integral[k_ind] += k*k * sjl(l,k*r) * fn[l+offset_n];
-                    /*
-                    // Weddle's rule for integration
-                    for (s=1; s<=S; s++)
-                    {
-                        int j = 0;
-                        double h = s_width/6.0, y[7] = { 0 };
-                        for (x=k; x<=k+s_width; x+=h)
-                        {
-                            y[j] = x*x * sjl(l,x*r) * fn[l+offset_n];
-                            j += 1;
-                        }
-                        bessel_integral[k_ind] += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
-                    }*/
-                }
-		}
-        offset_i = i * mapsize;
-        for(l=0; l<mapsize; l++)
-			{
-                for (k=k_min; k<k_max; k+=k_interval)
-        		{
-                    int k_ind = flag_k2kind(k,knodes,k_interval);
-                    //f[l+offset_i] = fn[l+offset_i];
-                    f[l+offset_i] = bessel_integral[k_ind];
-                }
-            }
-    }
-
-	free(bessel_integral);
-
-}
 
 //Convert from k value to corresponding k index
 int flag_k2kind(double k, double *knodes, double k_interval){
@@ -155,6 +70,105 @@ int flag_angular_bandlimit(int jl, const flagfb_parameters_t *parameters){
     s2let_parameters_t s2let_parameters = {};
 	fill_s2let_angular_parameters(&s2let_parameters, parameters);
 	return s2let_bandlimit(jl, &s2let_parameters);
+}
+
+// Based on flag_core_synthesis, computes f from a given flmn
+void flag_fourierbessel_mw_inverse(complex double *f, const complex double *flmn, const double *rnodes, const int Nrnodes, const double *knodes, const int Nknodes, const int L, const int spin, complex double *Flmr)
+{
+    //assert(L > 0);
+	//assert(N > 1);
+	//assert(nodes != NULL);
+	//const int alpha = ALPHA;
+
+    printf("FLAG_FB start: Nrnodes %i, Nknodes %i, L %i, spin %i\n",Nrnodes,Nknodes,L,spin);
+	int verbosity = 0; // Level of how much detail to print about ongoing process
+	int n, offset_lm, offset_r;
+	int flmsize = ssht_flm_size(L);
+	int frsize = ssht_fr_size_mw(L);
+	ssht_dl_method_t dl_method = SSHT_DL_TRAPANI;
+
+	//complex double *Flmr;
+	//flag_core_allocate_flmn(&Flmr, L, Nrnodes);
+	printf("> Mapped spherical Laguerre transform...");fflush(NULL);
+    //Using variation that integrates over k, as opposed to Fourier-Laguerre which sums over p
+    flag_fourierbessel_spherbessel_mapped_synthesis(Flmr, flmn, rnodes, Nrnodes, knodes, Nknodes, L);
+	printf("done\n");
+
+	for (n = 0; n < Nrnodes; n++){
+		//printf("> Synthesis: layer %i on %i\n",n+1,Nrnodes);
+		//offset_lm = n * flmsize;
+		offset_r = n * frsize;
+        ssht_core_mw_inverse_sov_sym(f + offset_r, Flmr + offset_lm, L, spin, dl_method, verbosity);
+	}
+
+    //free(Flmr);
+}
+
+// Based on flag_spherlaguerre_mapped_synthesis, changed to integrate over k with additional Bessel function, rather than summing over p
+void flag_fourierbessel_spherbessel_mapped_synthesis(complex double *f, const complex double *fn, const double *rnodes, int Nrnodes, double *knodes, int Nknodes, int L)
+{
+	//assert(Nrnodes > 1);
+    //assert(Nknodes > 1);
+	//assert(mapsize > 1);
+    int kmapsize = ssht_flm_size(L);
+	int rmapsize = ssht_fr_size_mw(L);
+    int i, l, k_ind, offset_n, offset_i;
+    double r, x, k, k_min = knodes[0], k_max = knodes[Nknodes-1], k_interval = (k_max-k_min)/(Nknodes-1), s, S = 30; // S is the number of strips to divide the integration into;
+    double s_width = ((k_max-k_min)/(S-1))/6.0;
+	double *bessel_integral = (double*)calloc(Nrnodes*L, sizeof(double));
+
+        // Integrate over k
+        for (i = 0; i < Nrnodes; i++)
+        {for(l=0; l<L; l++)
+        {
+
+                //double bessel_integral = 0;
+                r = rnodes[i];
+                offset_i = i * rmapsize;
+
+                bessel_integral[i,l]=0.;
+
+            for (k_ind=0; k_ind<Nknodes; k_ind++)
+    		{
+                k = k_min+(k_ind-1.)*k_interval;
+                //flag_kind2k(k_ind,&knodes,k_interval);
+                offset_n = k_ind * kmapsize;
+                //simplifying to sum for testing
+                bessel_integral[i,l] += k*k * sjl(l,k*r) * fn[l+offset_n] * k_interval;
+                //bessel_integral[i,l] +=  1. ;//* k_interval;
+                //bessel_integral[i,l] += k*k*r*r*k_interval;
+                printf("i %i k %f k_ind %i l %i integral %f \n",i,k,k_ind,l,bessel_integral[i,l]);
+
+                /*// Weddle's rule for integration
+                for (s=1; s<=S; s++)
+                {
+                    int j = 0;
+                    double h = s_width/6.0, y[7] = { 0 };
+                    for (x=k; x<=k+s_width; x+=h)
+                    {
+                        y[j] = x*x * sjl(l,x*r) * fn[l+offset_n];
+                        j += 1;
+                    }
+                    bessel_integral[i,l] += 3.0/10.0 * h * (y[0] + 5 * y[1] + y[2] + 6 * y[3] + y[4] + 5 * y[5] + y[6]);
+                }*/
+		    }
+        //}
+    }
+    //for (i = 0; i < Nrnodes; i++){
+        for(l=0; l<=L; l++)
+        {
+            //int k = flag_kind2k(k_ind,knodes,k_interval);
+            //int offset_k = k_ind * kmapsize;
+            //f[l+offset_i] = fn[l+offset_i];
+            //f[l+offset_i] = bessel_integral[k_ind,l];
+            //f[l+offset_i] = bessel_integral[i,l];
+            //remember to swap i and l back to other way before tidying up, is format needed for next step
+            f[i+l*Nrnodes] = bessel_integral[i,l];
+        }
+        //}
+    }
+
+	//free(bessel_integral);
 }
 
 flagfb_wavscal_t flagfb_allocate_f_wav_scal(const flagfb_parameters_t *parameters)
@@ -219,7 +233,7 @@ void flag_fbwavelet_analysis_lmnk(complex double *f_wav, complex double *f_scal,
 	complex double psi;
 	int L = parameters->L;
 	int N = parameters->N;
-	int K = parameters->K;
+	double K = parameters->K;
 	int J_l = flaglet_j_max(L, parameters->B_l);
 	int J_k = flaglet_j_max(K, parameters->B_k);
 	so3_parameters_t so3_parameters = {};
@@ -227,8 +241,9 @@ void flag_fbwavelet_analysis_lmnk(complex double *f_wav, complex double *f_scal,
 	int bandlimit_k = K;
 	int bandlimit_l = L;
 	int Nj = N;
-    double *knodes = parameters->knodes;
+    double k_min = parameters->k_min;
     double k_interval = parameters->k_interval;
+    double knodes[1] = {k_min}; //cannot pass full array in struct, so reconstruct array containing only k_min
     int Nknodes = flag_k2kind(K,&knodes,k_interval);
 
     // Define wav_lmk and scal_lmk from data, using flaglet code for now
